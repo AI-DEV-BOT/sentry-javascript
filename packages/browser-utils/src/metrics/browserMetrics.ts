@@ -76,18 +76,9 @@ let _lcpEntry: LargestContentfulPaint | undefined;
 let _clsEntry: LayoutShift | undefined;
 
 interface StartTrackingWebVitalsOptions {
-  /**
-   * When `true`, CLS is tracked as a standalone span. When `false`, CLS is
-   * recorded as a measurement on the pageload span. When `undefined`, CLS
-   * tracking is skipped entirely (e.g. because span streaming handles it).
-   */
   recordClsStandaloneSpans: boolean | undefined;
-  /**
-   * When `true`, LCP is tracked as a standalone span. When `false`, LCP is
-   * recorded as a measurement on the pageload span. When `undefined`, LCP
-   * tracking is skipped entirely (e.g. because span streaming handles it).
-   */
   recordLcpStandaloneSpans: boolean | undefined;
+  reportSoftNavs: boolean;
   client: Client;
 }
 
@@ -101,6 +92,7 @@ interface StartTrackingWebVitalsOptions {
 export function startTrackingWebVitals({
   recordClsStandaloneSpans,
   recordLcpStandaloneSpans,
+  reportSoftNavs,
   client,
 }: StartTrackingWebVitalsOptions): () => void {
   const performance = getBrowserPerformanceAPI();
@@ -113,16 +105,16 @@ export function startTrackingWebVitals({
     const lcpCleanupCallback = recordLcpStandaloneSpans
       ? trackLcpAsStandaloneSpan(client)
       : recordLcpStandaloneSpans === false
-        ? _trackLCP()
+        ? _trackLCP(reportSoftNavs)
         : undefined;
 
     const clsCleanupCallback = recordClsStandaloneSpans
       ? trackClsAsStandaloneSpan(client)
       : recordClsStandaloneSpans === false
-        ? _trackCLS()
+        ? _trackCLS(reportSoftNavs)
         : undefined;
 
-    const ttfbCleanupCallback = _trackTtfb();
+    const ttfbCleanupCallback = _trackTtfb(reportSoftNavs);
 
     return (): void => {
       ttfbCleanupCallback();
@@ -268,7 +260,7 @@ export { registerInpInteractionListener, startTrackingINP } from './inp';
  * Starts tracking the Cumulative Layout Shift on the current page and collects the value and last entry
  * to the `_measurements` object which ultimately is applied to the pageload span's measurements.
  */
-function _trackCLS(): () => void {
+function _trackCLS(reportSoftNavs?: boolean): () => void {
   return addClsInstrumentationHandler(({ metric }) => {
     const entry = metric.entries[metric.entries.length - 1] as LayoutShift | undefined;
     if (!entry) {
@@ -276,11 +268,11 @@ function _trackCLS(): () => void {
     }
     _measurements['cls'] = { value: metric.value, unit: '' };
     _clsEntry = entry;
-  }, true);
+  }, true, reportSoftNavs);
 }
 
 /** Starts tracking the Largest Contentful Paint on the current page. */
-function _trackLCP(): () => void {
+function _trackLCP(reportSoftNavs?: boolean): () => void {
   return addLcpInstrumentationHandler(({ metric }) => {
     const entry = metric.entries[metric.entries.length - 1];
     if (!entry || !isValidLcpMetric(metric.value)) {
@@ -289,10 +281,10 @@ function _trackLCP(): () => void {
 
     _measurements['lcp'] = { value: metric.value, unit: 'millisecond' };
     _lcpEntry = entry as LargestContentfulPaint;
-  }, true);
+  }, true, reportSoftNavs);
 }
 
-function _trackTtfb(): () => void {
+function _trackTtfb(reportSoftNavs?: boolean): () => void {
   return addTtfbInstrumentationHandler(({ metric }) => {
     const entry = metric.entries[metric.entries.length - 1];
     if (!entry) {
@@ -300,7 +292,7 @@ function _trackTtfb(): () => void {
     }
 
     _measurements['ttfb'] = { value: metric.value, unit: 'millisecond' };
-  });
+  }, reportSoftNavs);
 }
 
 interface AddPerformanceEntriesOptions {
